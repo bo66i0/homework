@@ -113,8 +113,8 @@ class Level {
       return 'wall'
     }
 
-    for (let i = Math.ceil(positionToMove.y); i < Math.ceil(positionToMove.y) + Math.floor(size.y); i++) {
-      for (let j = Math.ceil(positionToMove.x); j < Math.ceil(positionToMove.x) + Math.floor(size.x); j++) {
+    for (let i = Math.floor(positionToMove.y); i < Math.ceil(positionToMove.y + size.y); i++) {
+      for (let j = Math.floor(positionToMove.x); j < Math.ceil(positionToMove.x + size.x); j++) {
         if (this.grid[i][j]) {
           return this.grid[i][j];
         }
@@ -159,15 +159,7 @@ class LevelParser {
   }
 
   actorFromSymbol(key) {
-    if (arguments.length === 0) {
-      return  undefined;
-    }
-
-    if (this.dictionary.hasOwnProperty(key)) {
-      return this.dictionary.key;
-    } else {
-      return undefined;
-    }
+   if (key)  return this.dictionary[key]
   }
 
   obstacleFromSymbol(key) {
@@ -201,13 +193,16 @@ class LevelParser {
 
   createActors(levelLines) {
     const actors = [];
-    const movingActors = ['@', 'o', 'v', '=', '|'];
     const elementsArray = levelLines.map((levelLine) => levelLine.split(''));
     for (let i = 0; i < elementsArray.length; i++) {
       for (let j = 0; j < elementsArray[0].length; j++) {
-        if (movingActors.includes(elementsArray[i][j])) {
-          let newActor = new this.dictionary[elementsArray[i][j]](new Vector(j, i));
-          actors.push(newActor);
+        const symbol = elementsArray[i][j];
+        const objectConstructor = this.dictionary[symbol];
+        if (typeof objectConstructor === 'function') {
+          let newActor = new objectConstructor(new Vector(j, i));
+          if (newActor instanceof Actor) {
+            actors.push(newActor);
+          }
         }
       }
     }
@@ -215,7 +210,7 @@ class LevelParser {
   }
 
   parse(levelLines) {
-
+    return new Level(this.createGrid(levelLines), this.createActors(levelLines));
   }
 }
 
@@ -284,14 +279,13 @@ class FireRain extends Fireball {
 }
 
 class Coin extends Actor {
-  constructor(pos) {
-    super(pos,  new Vector(0.6, 0.6));
-    this.pos.x += 0.2;
-    this.pos.y += 0.1;
+  constructor(pos = new Vector(0, 0)) {
+    const posPlus = pos.plus(new Vector(0.2, 0.1));
+    super(posPlus,  new Vector(0.6, 0.6));
     this.springSpeed = 8;
     this.springDist = 0.07;
     this.spring = Math.random() * 2 * Math.PI;
-    this.basePos = pos;
+    this.basePos = posPlus;
   }
 
   get type() {
@@ -299,7 +293,7 @@ class Coin extends Actor {
   }
 
   updateSpring(time = 1) {
-    this.spring +=this.springSpeed * time;
+    this.spring += this.springSpeed * time;
   }
 
   getSpringVector() {
@@ -307,7 +301,8 @@ class Coin extends Actor {
   }
 
   getNextPosition(time = 1) {
-    return new Vector(this.basePos.x, this.basePos.y).plus(this.getSpringVector());
+    this.updateSpring(time);
+    return this.basePos.plus(this.getSpringVector());
   }
 
   act(time) {
@@ -326,39 +321,34 @@ class Player extends Actor {
   }
 }
 
-const grid = [
-  [undefined, undefined],
-  ['wall', 'wall']
+
+const schemas = [
+  [
+    '         ',
+    '         ',
+    '    =    ',
+    '       o ',
+    '     !xxx',
+    ' @       ',
+    'xxx!     ',
+    '         '
+  ],
+  [
+    '      v  ',
+    '    v    ',
+    '  v      ',
+    '        o',
+    '        x',
+    '@   x    ',
+    'x        ',
+    '         '
+  ]
 ];
-
-function MyCoin(title) {
-  this.type = 'coin';
-  this.title = title;
+const actorDict = {
+  '@': Player,
+  'v': FireRain,
+  'o': Coin
 }
-MyCoin.prototype = Object.create(Actor);
-MyCoin.constructor = MyCoin;
-
-const goldCoin = new MyCoin('Золото');
-const bronzeCoin = new MyCoin('Бронза');
-const player = new Actor();
-const fireball = new Actor();
-
-const level = new Level(grid, [ goldCoin, bronzeCoin, player, fireball ]);
-
-level.playerTouched('coin', goldCoin);
-level.playerTouched('coin', bronzeCoin);
-
-if (level.noMoreActors('coin')) {
-  console.log('Все монеты собраны');
-  console.log(`Статус игры: ${level.status}`);
-}
-
-const obstacle = level.obstacleAt(new Vector(1, 1), player.size);
-if (obstacle) {
-  console.log(`На пути препятствие: ${obstacle}`);
-}
-
-const otherActor = level.actorAt(player);
-if (otherActor === fireball) {
-  console.log('Пользователь столкнулся с шаровой молнией');
-}
+const parser = new LevelParser(actorDict);
+runGame(schemas, parser, DOMDisplay)
+  .then(() => console.log('Вы выиграли приз!'));
